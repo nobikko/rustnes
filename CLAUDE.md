@@ -36,3 +36,8 @@ NES Emulator with Rust-first reference implementation followed by WASM (browser)
 - `clippy` clean for core logic
 - Small, reviewable commits
 - No unsafe code in `nes-core` unless explicitly approved
+
+### Git Workflow
+- Repository: `github.com/nobikko/rustnes`
+- Push changes to GitHub after any code or documentation modifications
+- Use `git push` to sync with origin
