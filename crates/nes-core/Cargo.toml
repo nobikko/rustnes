@@ -1,0 +1,23 @@
+[package]
+name = "nes-core"
+version = "0.1.0"
+edition = "2021"
+description = "Pure Rust NES emulator core"
+license = "MIT"
+
+[dependencies]
+
+[dev-dependencies]
+criterion = { version = "0.5", features = ["async_tokio"] }
+
+[[test]]
+name = "integration"
+path = "tests/integration.rs"
+
+[[test]]
+name = "cpu"
+path = "tests/cpu.rs"
+
+[[test]]
+name = "ppu"
+path = "tests/ppu.rs"

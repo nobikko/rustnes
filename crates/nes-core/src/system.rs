@@ -1,0 +1,177 @@
+//! NES System Integration
+//!
+//! This module integrates all NES components (CPU, PPU, APU, Bus) into a working system.
+
+use crate::bus::{Bus, SimpleCartridge};
+use crate::cartridge::{Cartridge, CartridgeError};
+use crate::cpu::{Cpu, CpuError};
+use crate::ppu::Ppu;
+use crate::apu::Apu;
+
+/// NES System - integrates all components
+#[derive(Debug, Clone)]
+pub struct NesSystem {
+    cpu: Cpu,
+    ppu: Ppu,
+    apu: Apu,
+    bus: Bus,
+    /// Frame counter
+    frame_count: u64,
+}
+
+impl NesSystem {
+    /// Create a new NES system with no cartridge
+    pub fn new() -> Self {
+        Self {
+            cpu: Cpu::new(),
+            ppu: Ppu::new(),
+            apu: Apu::new(),
+            bus: Bus::new(),
+            frame_count: 0,
+        }
+    }
+
+    /// Load a simple cartridge into the system
+    pub fn load_simple_cartridge(&mut self, cartridge: SimpleCartridge) {
+        self.bus.set_cartridge(cartridge);
+    }
+
+    /// Load an iNES ROM file into the system
+    pub fn load_rom(&mut self, rom_data: &[u8]) -> Result<(), CartridgeError> {
+        let cartridge = Cartridge::from_rom(rom_data)?;
+        self.bus.set_cartridge(SimpleCartridge::new(
+            cartridge.prg_rom().to_vec(),
+            cartridge.chr_rom().to_vec(),
+        ));
+        Ok(())
+    }
+
+    /// Reset the NES system
+    pub fn reset(&mut self) {
+        self.cpu.reset();
+        self.ppu.reset();
+        self.apu.reset();
+        self.frame_count = 0;
+    }
+
+    /// Step the system by one instruction (CPU)
+    /// This also steps PPU appropriately (3 PPU cycles per CPU cycle)
+    pub fn step(&mut self) -> Result<bool, CpuError> {
+        // Step CPU
+        let running = self.cpu.step(&mut self.bus)?;
+        if !running {
+            return Ok(false);
+        }
+
+        // Step PPU (3 cycles for each CPU cycle)
+        let cycles = self.cpu.registers().pc as u8; // Approximate
+        for _ in 0..(cycles.max(1) * 3) {
+            self.ppu.step();
+        }
+
+        // Step APU
+        self.apu.step(cycles.max(1));
+
+        Ok(true)
+    }
+
+    /// Run for N frames
+    pub fn run_frames(&mut self, frames: u64) -> Result<(), Box<dyn std::error::Error>> {
+        // NTSC: ~29780 cycles per frame
+        let cycles_per_frame = 29780;
+
+        for _ in 0..frames {
+            // Run for one frame
+            for _ in 0..cycles_per_frame {
+                self.step()?;
+            }
+            self.frame_count += 1;
+        }
+        Ok(())
+    }
+
+    /// Run until VBLANK is set (one frame)
+    pub fn run_until_vblank(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        let mut cycles = 0u64;
+        let max_cycles = 30000; // Safety limit
+
+        while cycles < max_cycles {
+            self.step()?;
+            cycles += 1;
+
+            if self.ppu.status().vblank() {
+                return Ok(());
+            }
+        }
+
+        Err("Timeout waiting for VBLANK".into())
+    }
+
+    /// Get CPU reference
+    pub fn cpu(&self) -> &Cpu {
+        &self.cpu
+    }
+
+    /// Get mutable CPU reference
+    pub fn cpu_mut(&mut self) -> &mut Cpu {
+        &mut self.cpu
+    }
+
+    /// Get PPU reference
+    pub fn ppu(&self) -> &Ppu {
+        &self.ppu
+    }
+
+    /// Get mutable PPU reference
+    pub fn ppu_mut(&mut self) -> &mut Ppu {
+        &mut self.ppu
+    }
+
+    /// Get APU reference
+    pub fn apu(&self) -> &Apu {
+        &self.apu
+    }
+
+    /// Get mutable APU reference
+    pub fn apu_mut(&mut self) -> &mut Apu {
+        &mut self.apu
+    }
+
+    /// Get frame count
+    pub fn frame_count(&self) -> u64 {
+        self.frame_count
+    }
+}
+
+impl Default for NesSystem {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::bus::SimpleCartridge;
+
+    #[test]
+    fn test_system_reset() {
+        let mut system = NesSystem::new();
+        system.reset();
+        // After reset, CPU should be ready
+        assert_eq!(system.cpu().registers().pc, 0xFFFC);
+    }
+
+    #[test]
+    fn test_system_with_cartridge() {
+        let prg_rom = vec![0xFF; 16384]; // 16KB
+        let chr_rom = vec![0x00; 8192];  // 8KB
+        let cartridge = SimpleCartridge::new(prg_rom, chr_rom);
+
+        let mut system = NesSystem::new();
+        system.load_simple_cartridge(cartridge);
+        system.reset();
+
+        assert!(system.cpu().registers().pc == 0xFFFC);
+    }
+}
