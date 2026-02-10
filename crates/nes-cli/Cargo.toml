@@ -1,0 +1,14 @@
+[package]
+name = "nes-cli"
+version = "0.1.0"
+edition = "2021"
+description = "NES emulator CLI runner"
+license = "MIT"
+
+[[bin]]
+name = "nes-cli"
+path = "src/main.rs"
+
+[dependencies]
+nes-core = { path = "../nes-core" }
+clap = { version = "4.4", features = ["derive"] }
