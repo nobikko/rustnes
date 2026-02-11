@@ -1,6 +1,6 @@
 //! CPU tests for the NES emulator
 
-use nes_core::cpu::{Cpu, CpuError, StatusFlags, Opcode};
+use nes_core::cpu::{Cpu, StatusFlags, Opcode};
 
 #[test]
 fn test_cpu_reset() {
