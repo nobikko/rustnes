@@ -448,7 +448,7 @@ impl Cpu {
                 let offset = bus.read(self.registers.pc.wrapping_add(1)) as i8;
                 let addr = self.registers.pc.wrapping_add(2) as i16 + offset as i16;
                 // Branch cycle penalty if taken
-                let extra = if ((self.registers.pc as i16 ^ addr) & 0xFF00u16 as i16) != 0 { 1 } else { 0 };
+                let extra = if ((self.registers.pc as u16 ^ addr as u16) & 0xFF00) != 0 { 1 } else { 0 };
                 (addr as u16, extra)
             }
             AddressingMode::Accumulator => {
