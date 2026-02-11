@@ -148,7 +148,7 @@
     </div>
 
     <script type="module">
-        import init, { NesEmulator } from '../pkg/nes_wasm.js';
+        import init, { NesEmulator } from './nes_wasm.js';
 
         let emulator = null;
         let running = false;
@@ -160,9 +160,15 @@
         const imgData = ctx.createImageData(256, 240);
 
         async function initEmulator() {
-            await init();
-            emulator = NesEmulator.new();
-            updateStatus();
+            try {
+                await init();
+                emulator = NesEmulator.new();
+                updateStatus();
+                console.log('Emulator initialized successfully');
+            } catch (err) {
+                console.error('Failed to initialize emulator:', err);
+                alert('Failed to initialize emulator: ' + err.message);
+            }
         }
 
         function updateStatus() {
@@ -249,13 +255,16 @@
         document.getElementById('load-test-btn').addEventListener('click', async () => {
             // Load the built-in test ROM
             try {
-                const response = await fetch('test.nes');
+                const response = await fetch('working_test.nes');
                 if (response.ok) {
                     const romData = new Uint8Array(await response.arrayBuffer());
                     emulator = NesEmulator.new();
                     emulator.load_rom(romData);
                     updateDisplay();
-                    document.getElementById('file-name').textContent = 'Loaded: test.nes (built-in)';
+                    document.getElementById('file-name').textContent = 'Loaded: working_test.nes';
+                    // Start running
+                    emulator.run_frames(60);
+                    updateDisplay();
                 }
             } catch (err) {
                 console.error('Failed to load test ROM:', err);

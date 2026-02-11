@@ -250,6 +250,9 @@ pub enum Opcode {
     // SEC - Set Carry
     SECImplied,
 
+    // SED - Set Decimal
+    SEDImplied,
+
     // SEI - Set Interrupt
     SEIImplied,
 
@@ -344,9 +347,42 @@ impl Cpu {
         &self.registers
     }
 
+    /// Get mutable CPU registers
+    pub fn registers_mut(&mut self) -> &mut CpuRegisters {
+        &mut self.registers
+    }
+
     /// Get CPU status flags
     pub fn status(&self) -> &StatusFlags {
         &self.status
+    }
+
+    /// Get full P register value (including B and U flags)
+    pub fn p_register(&self) -> u8 {
+        // P register format:
+        // Bit 7: N (negative)
+        // Bit 6: V (overflow)
+        // Bit 5: B (break)
+        // Bit 4: U (unused/always 1)
+        // Bit 3: D (decimal)
+        // Bit 2: I (interrupt)
+        // Bit 1: Z (zero)
+        // Bit 0: C (carry)
+        // B flag is not tracked by StatusFlags - use 0 (unset)
+        // U flag is always 1
+        let mut p: u8 = StatusFlags::UNUSED;
+        if self.status.negative() { p |= StatusFlags::NEGATIVE; }
+        if self.status.overflow() { p |= StatusFlags::OVERFLOW; }
+        if self.status.decimal() { p |= StatusFlags::DECIMAL; }
+        if self.status.interrupt() { p |= StatusFlags::INTERRUPT; }
+        if self.status.zero() { p |= StatusFlags::ZERO; }
+        if self.status.carry() { p |= StatusFlags::CARRY; }
+        p
+    }
+
+    /// Get mutable CPU status flags
+    pub fn status_mut(&mut self) -> &mut StatusFlags {
+        &mut self.status
     }
 
     /// Get total cycles executed
@@ -368,19 +404,45 @@ impl Cpu {
         let opcode_byte = bus.read(self.registers.pc);
         let opcode = self.decode_opcode(opcode_byte)?;
 
+        
         // Calculate address based on addressing mode
         let (address, extra_cycles) = self.get_address(bus, opcode)?;
 
         // Execute instruction
         self.execute(bus, opcode, address)?;
 
-        // Update PC by adding 1 + address mode bytes
+        // Update PC by adding 1 + address mode bytes, unless this instruction
+        // already set the PC (control flow instructions that unconditionally
+        // set PC or conditionally set PC when branch is taken)
         let addr_bytes = match self.addressing_mode(opcode) {
             AddressingMode::Implied | AddressingMode::Accumulator => 0,
-            _ => 1,
+            AddressingMode::Relative | AddressingMode::ZeroPage | AddressingMode::ZeroPageX
+            | AddressingMode::ZeroPageY | AddressingMode::Immediate => 1,
+            AddressingMode::Absolute | AddressingMode::AbsoluteX | AddressingMode::AbsoluteY
+            | AddressingMode::IndirectX | AddressingMode::IndirectY => 2,
         };
-        self.registers.pc = self.registers.pc.wrapping_add(1 + addr_bytes as u16);
 
+        // Check if this is a control flow instruction that set PC
+        let (was_control_flow, pc_was_set) = match opcode {
+            Opcode::JMPAbsolute | Opcode::JMPIndirect | Opcode::JSRAbsolute
+            | Opcode::RTIImplied | Opcode::RTSImplied | Opcode::BRKImplied => (true, true),
+            Opcode::BCCRelative => (true, !self.status.carry()),
+            Opcode::BCSRelative => (true, self.status.carry()),
+            Opcode::BEQRelative => (true, self.status.zero()),
+            Opcode::BMIRelative => (true, self.status.negative()),
+            Opcode::BNERelative => (true, !self.status.zero()),
+            Opcode::BPLRelative => (true, !self.status.negative()),
+            Opcode::BVCRelative => (true, !self.status.overflow()),
+            Opcode::BVSRelative => (true, self.status.overflow()),
+            _ => (false, false),
+        };
+
+        // If PC was not set by the instruction, increment it
+        if !pc_was_set {
+            self.registers.pc = self.registers.pc.wrapping_add(1 + addr_bytes as u16);
+        }
+
+        
         // Update total cycles
         self.total_cycles += self.instruction_cycles(opcode) as u64 + extra_cycles as u64;
 
@@ -430,9 +492,9 @@ impl Cpu {
                 (addr, extra)
             }
             AddressingMode::IndirectX => {
-                let zero_page = (bus.read(self.registers.pc.wrapping_add(1)) + self.registers.x) as u16;
+                let zero_page = (bus.read(self.registers.pc.wrapping_add(1)).wrapping_add(self.registers.x)) as u16;
                 let low = bus.read(zero_page & 0xFF) as u16;
-                let high = bus.read((zero_page + 1) & 0xFF) as u16;
+                let high = bus.read((zero_page.wrapping_add(1)) & 0xFF) as u16;
                 (low | (high << 8), 0)
             }
             AddressingMode::IndirectY => {
@@ -466,7 +528,7 @@ impl Cpu {
     fn execute(&mut self, bus: &mut impl Bus, opcode: Opcode, address: u16) -> Result<(), CpuError> {
         match opcode {
             // ADC - Add with Carry
-            Opcode::ADCImmediate => self.adc(bus.read(address)),
+            Opcode::ADCImmediate => self.adc(address as u8),
             Opcode::ADCZeroPage => self.adc(bus.read(address)),
             Opcode::ADCZeroPageX => self.adc(bus.read(address)),
             Opcode::ADCAbsolute => self.adc(bus.read(address)),
@@ -476,7 +538,7 @@ impl Cpu {
             Opcode::ADCIndirectY => self.adc(bus.read(address)),
 
             // AND - Logical AND
-            Opcode::ANDImmediate => self.and(bus.read(address)),
+            Opcode::ANDImmediate => self.and(address as u8),
             Opcode::ANDZeroPage => self.and(bus.read(address)),
             Opcode::ANDZeroPageX => self.and(bus.read(address)),
             Opcode::ANDAbsolute => self.and(bus.read(address)),
@@ -513,7 +575,7 @@ impl Cpu {
             Opcode::CLVImplied => { self.status.set_overflow(false); Ok(()) }
 
             // CMP - Compare
-            Opcode::CMPImmediate => self.cmp(bus.read(address)),
+            Opcode::CMPImmediate => self.cmp(address as u8),
             Opcode::CMPZeroPage => self.cmp(bus.read(address)),
             Opcode::CMPZeroPageX => self.cmp(bus.read(address)),
             Opcode::CmpAbsolute => self.cmp(bus.read(address)),
@@ -523,12 +585,12 @@ impl Cpu {
             Opcode::CMPIndirectY => self.cmp(bus.read(address)),
 
             // CPX - Compare X Register
-            Opcode::CPXImmediate => self.cpx(bus.read(address)),
+            Opcode::CPXImmediate => self.cpx(address as u8),
             Opcode::CPXZeroPage => self.cpx(bus.read(address)),
             Opcode::CPXAbsolute => self.cpx(bus.read(address)),
 
             // CPY - Compare Y Register
-            Opcode::CPYImmediate => self.cpy(bus.read(address)),
+            Opcode::CPYImmediate => self.cpy(address as u8),
             Opcode::CPYZeroPage => self.cpy(bus.read(address)),
             Opcode::CPYAbsolute => self.cpy(bus.read(address)),
 
@@ -545,7 +607,7 @@ impl Cpu {
             Opcode::DEYImplied => { self.registers.y = self.registers.y.wrapping_sub(1); self.set_flags_zn(self.registers.y); Ok(()) }
 
             // EOR - Exclusive OR
-            Opcode::EORImmediate => self.eor(bus.read(address)),
+            Opcode::EORImmediate => self.eor(address as u8),
             Opcode::EORZeroPage => self.eor(bus.read(address)),
             Opcode::EORZeroPageX => self.eor(bus.read(address)),
             Opcode::EORAbsolute => self.eor(bus.read(address)),
@@ -588,7 +650,7 @@ impl Cpu {
             }
 
             // LDA - Load Accumulator
-            Opcode::LDAImmediate => { self.registers.a = bus.read(address); self.set_flags_zn(self.registers.a); Ok(()) }
+            Opcode::LDAImmediate => { self.registers.a = address as u8; self.set_flags_zn(self.registers.a); Ok(()) }
             Opcode::LDAZeroPage => { self.registers.a = bus.read(address); self.set_flags_zn(self.registers.a); Ok(()) }
             Opcode::LDAZeroPageX => { self.registers.a = bus.read(address); self.set_flags_zn(self.registers.a); Ok(()) }
             Opcode::LDAAbsolute => { self.registers.a = bus.read(address); self.set_flags_zn(self.registers.a); Ok(()) }
@@ -598,14 +660,14 @@ impl Cpu {
             Opcode::LDAIndirectY => { self.registers.a = bus.read(address); self.set_flags_zn(self.registers.a); Ok(()) }
 
             // LDX - Load X Register
-            Opcode::LDXImmediate => { self.registers.x = bus.read(address); self.set_flags_zn(self.registers.x); Ok(()) }
+            Opcode::LDXImmediate => { self.registers.x = address as u8; self.set_flags_zn(self.registers.x); Ok(()) }
             Opcode::LDXZeroPage => { self.registers.x = bus.read(address); self.set_flags_zn(self.registers.x); Ok(()) }
             Opcode::LDXZeroPageY => { self.registers.x = bus.read(address); self.set_flags_zn(self.registers.x); Ok(()) }
             Opcode::LDXAbsolute => { self.registers.x = bus.read(address); self.set_flags_zn(self.registers.x); Ok(()) }
             Opcode::LDXAbsoluteY => { self.registers.x = bus.read(address); self.set_flags_zn(self.registers.x); Ok(()) }
 
             // LDY - Load Y Register
-            Opcode::LDYImmediate => { self.registers.y = bus.read(address); self.set_flags_zn(self.registers.y); Ok(()) }
+            Opcode::LDYImmediate => { self.registers.y = address as u8; self.set_flags_zn(self.registers.y); Ok(()) }
             Opcode::LDYZeroPage => { self.registers.y = bus.read(address); self.set_flags_zn(self.registers.y); Ok(()) }
             Opcode::LDYZeroPageX => { self.registers.y = bus.read(address); self.set_flags_zn(self.registers.y); Ok(()) }
             Opcode::LDYAbsolute => { self.registers.y = bus.read(address); self.set_flags_zn(self.registers.y); Ok(()) }
@@ -622,7 +684,7 @@ impl Cpu {
             Opcode::NOPImplied => Ok(()),
 
             // ORA - Logical OR
-            Opcode::ORAImmediate => self.ora(bus.read(address)),
+            Opcode::ORAImmediate => self.ora(address as u8),
             Opcode::ORAZeroPage => self.ora(bus.read(address)),
             Opcode::ORAZeroPageX => self.ora(bus.read(address)),
             Opcode::ORAAbsolute => self.ora(bus.read(address)),
@@ -672,7 +734,14 @@ impl Cpu {
 
             // RTI - Return from Interrupt
             Opcode::RTIImplied => {
-                self.pull(bus)?; // Skip processor status
+                let p = self.pull(bus)?;  // Pull processor status from stack
+                // Apply P to status register
+                self.status.set_carry((p & 0x01) != 0);
+                self.status.set_zero((p & 0x02) != 0);
+                self.status.set_interrupt((p & 0x04) != 0);
+                self.status.set_decimal((p & 0x08) != 0);
+                self.status.set_overflow((p & 0x40) != 0);
+                self.status.set_negative((p & 0x80) != 0);
                 let low = self.pull(bus)?;
                 let high = self.pull(bus)?;
                 self.registers.pc = (high as u16) << 8 | (low as u16);
@@ -688,7 +757,7 @@ impl Cpu {
             }
 
             // SBC - Subtract with Carry
-            Opcode::SBCImmediate => self.sbc(bus.read(address)),
+            Opcode::SBCImmediate => self.sbc(address as u8),
             Opcode::SBCZeroPage => self.sbc(bus.read(address)),
             Opcode::SBCZeroPageX => self.sbc(bus.read(address)),
             Opcode::SBCAbsolute => self.sbc(bus.read(address)),
@@ -699,6 +768,9 @@ impl Cpu {
 
             // SEC - Set Carry
             Opcode::SECImplied => { self.status.set_carry(true); Ok(()) }
+
+            // SED - Set Decimal
+            Opcode::SEDImplied => { self.status.set_decimal(true); Ok(()) }
 
             // SEI - Set Interrupt
             Opcode::SEIImplied => { self.status.set_interrupt(true); Ok(()) }
@@ -766,10 +838,12 @@ impl Cpu {
         let sum = self.registers.a as u16 + value as u16 + carry as u16;
 
         // Overflow detection (signed addition)
+        // V is set if the sign of the result is different from both operands
+        // (both positive but result negative) OR (both negative but result positive)
         let a_negative = (self.registers.a & 0x80) != 0;
         let v_negative = (value & 0x80) != 0;
-        let result_negative = (sum & 0x100) != 0;
-        let overflow = (a_negative == v_negative) && (result_negative != a_negative);
+        let result_negative = (sum & 0x80) != 0;  // Check bit 7, not bit 8!
+        let overflow = (a_negative == v_negative) && (a_negative != result_negative);
 
         self.status.set_overflow(overflow);
         self.status.set_carry(sum > 0xFF);
@@ -1115,17 +1189,18 @@ impl Cpu {
             Opcode::BRKImplied | Opcode::CLCImplied | Opcode::CLDImplied
             | Opcode::CLIImplied | Opcode::CLVImplied | Opcode::DEXImplied
             | Opcode::DEYImplied | Opcode::INXImplied | Opcode::INYImplied
-            | Opcode::JMPAbsolute | Opcode::JMPIndirect | Opcode::JSRAbsolute
             | Opcode::NOPImplied | Opcode::PHAImplied | Opcode::PHPImplied
             | Opcode::PLAImplied | Opcode::PLPImplied | Opcode::RTIImplied
-            | Opcode::RTSImplied | Opcode::SECImplied | Opcode::SEIImplied
+            | Opcode::RTSImplied | Opcode::SECImplied | Opcode::SEDImplied | Opcode::SEIImplied
             | Opcode::TAXImplied | Opcode::TAYImplied | Opcode::TSXImplied
             | Opcode::TXAImplied | Opcode::TXSImplied | Opcode::TYAImplied => AddressingMode::Implied,
+            Opcode::JMPAbsolute | Opcode::JSRAbsolute => AddressingMode::Absolute,
+            Opcode::JMPIndirect => AddressingMode::Implied,
         }
     }
 
     /// Get the base cycle count for an opcode
-    fn instruction_cycles(&self, opcode: Opcode) -> u8 {
+    pub fn instruction_cycles(&self, opcode: Opcode) -> u8 {
         match opcode {
             // ADC, AND, CMP, EOR, LDA, ORA, SBC
             Opcode::ADCImmediate | Opcode::ANDImmediate | Opcode::CMPImmediate
@@ -1183,7 +1258,7 @@ impl Cpu {
             Opcode::ASLAccumulator | Opcode::CLCImplied | Opcode::CLDImplied
             | Opcode::CLIImplied | Opcode::CLVImplied | Opcode::DEXImplied
             | Opcode::DEYImplied | Opcode::INXImplied | Opcode::INYImplied
-            | Opcode::NOPImplied | Opcode::SECImplied | Opcode::SEIImplied
+            | Opcode::NOPImplied | Opcode::SECImplied | Opcode::SEDImplied | Opcode::SEIImplied
             | Opcode::TXSImplied | Opcode::TYAImplied => 2,
 
             
@@ -1222,7 +1297,7 @@ impl Cpu {
     }
 
     /// Decode an opcode to its instruction info
-    fn decode_opcode(&self, opcode: u8) -> Result<Opcode, CpuError> {
+    pub fn decode_opcode(&self, opcode: u8) -> Result<Opcode, CpuError> {
         // 6502 opcode table
         match opcode {
             0x69 => Ok(Opcode::ADCImmediate),
@@ -1323,12 +1398,14 @@ impl Cpu {
             0x5E => Ok(Opcode::LSRAbsoluteX),
             0xEA => Ok(Opcode::NOPImplied),
             0x09 => Ok(Opcode::ORAImmediate),
+            0x07 => Ok(Opcode::ORAZeroPageX),
             0x05 => Ok(Opcode::ORAZeroPage),
             0x15 => Ok(Opcode::ORAZeroPageX),
             0x0D => Ok(Opcode::ORAAbsolute),
             0x1D => Ok(Opcode::ORAAbsoluteX),
             0x19 => Ok(Opcode::ORAAbsoluteY),
             0x01 => Ok(Opcode::ORAIndirectX),
+            0x33 => Ok(Opcode::ORAIndirectX),
             0x11 => Ok(Opcode::ORAIndirectY),
             0x48 => Ok(Opcode::PHAImplied),
             0x08 => Ok(Opcode::PHPImplied),
@@ -1349,6 +1426,7 @@ impl Cpu {
             0xE9 => Ok(Opcode::SBCImmediate),
             0xE5 => Ok(Opcode::SBCZeroPage),
             0xF5 => Ok(Opcode::SBCZeroPageX),
+            0xF8 => Ok(Opcode::SEDImplied),
             0xED => Ok(Opcode::SBCAbsolute),
             0xFD => Ok(Opcode::SBCAbsoluteX),
             0xF9 => Ok(Opcode::SBCAbsoluteY),

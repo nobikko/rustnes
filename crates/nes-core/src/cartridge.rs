@@ -161,12 +161,11 @@ impl Cartridge {
         match self.mapper {
             Mapper::NROM => {
                 // NROM: Simple mapping, no bank switching
+                // PRG ROM is mirrored - same content appears in both $8000-$BFFF and $C000-$FFFF
                 let offset = (address - 0x8000) as usize;
-                if offset < self.prg_rom.len() {
-                    self.prg_rom[offset]
-                } else {
-                    0xFF
-                }
+                let prg_size = self.prg_rom.len();
+                let mirrored_offset = offset % prg_size;
+                self.prg_rom[mirrored_offset]
             }
             Mapper::UXROM => {
                 // UXROM: Lower 16KB fixed, upper 16KB switchable
@@ -177,7 +176,8 @@ impl Cartridge {
                     if offset < prgrom_len {
                         self.prg_rom[offset]
                     } else {
-                        0xFF
+                        // Mirror if beyond PRG ROM size
+                        self.prg_rom[offset % prgrom_len]
                     }
                 } else {
                     // Switchable 16KB at $C000-$FFFF
@@ -188,18 +188,17 @@ impl Cartridge {
                     if bank < num_banks {
                         self.prg_rom[bank * bank_size + offset]
                     } else {
-                        0xFF
+                        // Mirror if beyond bank range
+                        self.prg_rom[offset]
                     }
                 }
             }
             Mapper::CNROM => {
                 // CNROM: Similar to UXROM for PRG
                 let offset = (address - 0x8000) as usize;
-                if offset < self.prg_rom.len() {
-                    self.prg_rom[offset]
-                } else {
-                    0xFF
-                }
+                let prg_size = self.prg_rom.len();
+                let mirrored_offset = offset % prg_size;
+                self.prg_rom[mirrored_offset]
             }
         }
     }
