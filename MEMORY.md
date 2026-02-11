@@ -62,16 +62,8 @@ Opcode::RTIImplied => {
 - Lines 531, 541, 578, 588, 593, 610, 653, 663, 670, 687, 753: Changed immediate mode instructions to use `address as u8` instead of `bus.read(address)`
 - Lines 736-742: Fixed RTI instruction to properly restore P register from stack
 
-#### /home/nobikko/wasm-nes-emulator/demo/index.html
-- Fixed `NesEmulator.new()` to `new NesEmulator()` (class instantiation)
-- Fixed `emulator.framebuffer_rgb()` to `emulator.framebuffer_rgb` (getter property)
-
 #### /home/nobikko/wasm-nes-emulator/crates/nes-core/tests/compare_nestest.rs
 - Modified debug output to show instructions 0-14 and 20-30
-
-#### /home/nobikko/wasm-nes-emulator/demo/index.html
-- Fixed `NesEmulator.new()` to `new NesEmulator()` (class instantiation)
-- Fixed `emulator.framebuffer_rgb()` to `emulator.framebuffer_rgb` (getter property)
 
 ### WASM Demo Issues Fixed
 
@@ -97,4 +89,16 @@ After the RTI fix, the test passes successfully:
 - Test result: ok. 1 passed; 0 failed
 
 ### Demo Status
-The WASM demo is now working correctly at http://localhost:8081. All WebAssembly initialization errors have been resolved.
+The WASM demo at http://localhost:8081 is now fully functional. Playwright test results:
+- Test 1: Page loaded successfully - PASS
+- Test 2: No console errors - PASS
+- Test 3: Emulator creation - PASS
+- Test 4: ROM loading - PASS
+- Test 5: Framebuffer access - PASS (184320 bytes = 256 * 240 * 3)
+- Test 6: Running frames - PASS (frame_count increased from 0 to 1)
+
+ALL TESTS PASSED!
+
+### Demo Files Fixed
+- Fixed `NesEmulator.new()` to `new NesEmulator()` (class instantiation)
+- Fixed `emulator.framebuffer_rgb()` to `emulator.framebuffer_rgb` (getter property)
