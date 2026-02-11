@@ -39,27 +39,33 @@ export class NesEmulator {
         return ret >>> 0;
     }
     /**
+     * Get PPU framebuffer length
+     * @returns {number}
+     */
+    framebuffer_len() {
+        const ret = wasm.nesemulator_framebuffer_len(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
      * Get PPU framebuffer (256x240 RGB pixels)
      * Returns raw RGB data (76800 bytes: 256 * 240 * 3)
      * @returns {Uint8Array}
      */
     get framebuffer_rgb() {
         const ret = wasm.nesemulator_framebuffer_rgb(this.__wbg_ptr);
-        var v1 = getArrayU8FromWasm0(ret[0], ret[1]).slice();
-        wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
-        return v1;
+        return ret;
     }
     /**
      * Load a ROM from bytes
+     * Returns true on success, false on failure
      * @param {Uint8Array} rom_data
+     * @returns {boolean}
      */
     load_rom(rom_data) {
         const ptr0 = passArray8ToWasm0(rom_data, wasm.__wbindgen_malloc);
         const len0 = WASM_VECTOR_LEN;
         const ret = wasm.nesemulator_load_rom(this.__wbg_ptr, ptr0, len0);
-        if (ret[1]) {
-            throw takeFromExternrefTable0(ret[0]);
-        }
+        return ret !== 0;
     }
     /**
      * Create a new NES emulator
@@ -129,12 +135,23 @@ export function version() {
 function __wbg_get_imports() {
     const import0 = {
         __proto__: null,
-        __wbg_Error_8c4e43fe74559d73: function(arg0, arg1) {
-            const ret = Error(getStringFromWasm0(arg0, arg1));
-            return ret;
-        },
         __wbg___wbindgen_throw_be289d5034ed271b: function(arg0, arg1) {
             throw new Error(getStringFromWasm0(arg0, arg1));
+        },
+        __wbg_length_32ed9a279acd054c: function(arg0) {
+            const ret = arg0.length;
+            return ret;
+        },
+        __wbg_new_3664a4ca8662b61d: function(arg0) {
+            const ret = new ArrayBuffer(arg0 >>> 0);
+            return ret;
+        },
+        __wbg_new_dd2b680c8bf6ae29: function(arg0) {
+            const ret = new Uint8Array(arg0);
+            return ret;
+        },
+        __wbg_set_cc56eefd2dd91957: function(arg0, arg1, arg2) {
+            arg0.set(getArrayU8FromWasm0(arg1, arg2));
         },
         __wbindgen_init_externref_table: function() {
             const table = wasm.__wbindgen_externrefs;
@@ -179,12 +196,6 @@ function passArray8ToWasm0(arg, malloc) {
     getUint8ArrayMemory0().set(arg, ptr / 1);
     WASM_VECTOR_LEN = arg.length;
     return ptr;
-}
-
-function takeFromExternrefTable0(idx) {
-    const value = wasm.__wbindgen_externrefs.get(idx);
-    wasm.__externref_table_dealloc(idx);
-    return value;
 }
 
 let cachedTextDecoder = new TextDecoder('utf-8', { ignoreBOM: true, fatal: true });
