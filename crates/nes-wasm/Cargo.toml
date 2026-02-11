@@ -10,8 +10,10 @@ crate-type = ["cdylib"]
 
 [dependencies]
 nes-core = { path = "../nes-core" }
-wasm-bindgen = "0.2"
+wasm-bindgen = { version = "0.2", features = ["serde-serialize"] }
 js-sys = "0.3"
+# Disable externref usage for Chrome compatibility
+wasm-bindgen-futures = "0.4"
 
 [dev-dependencies]
 wasm-bindgen-test = "0.3"

@@ -1,0 +1,14 @@
+/home/nobikko/wasm-nes-emulator/target/wasm32-unknown-unknown/debug/deps/serde-fe0939111fabacd4.d: /home/nobikko/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/lib.rs /home/nobikko/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/integer128.rs /home/nobikko/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/mod.rs /home/nobikko/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/de.rs /home/nobikko/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/ser.rs /home/nobikko/wasm-nes-emulator/target/wasm32-unknown-unknown/debug/build/serde-52d2528b03c229bb/out/private.rs
+
+/home/nobikko/wasm-nes-emulator/target/wasm32-unknown-unknown/debug/deps/libserde-fe0939111fabacd4.rlib: /home/nobikko/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/lib.rs /home/nobikko/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/integer128.rs /home/nobikko/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/mod.rs /home/nobikko/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/de.rs /home/nobikko/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/ser.rs /home/nobikko/wasm-nes-emulator/target/wasm32-unknown-unknown/debug/build/serde-52d2528b03c229bb/out/private.rs
+
+/home/nobikko/wasm-nes-emulator/target/wasm32-unknown-unknown/debug/deps/libserde-fe0939111fabacd4.rmeta: /home/nobikko/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/lib.rs /home/nobikko/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/integer128.rs /home/nobikko/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/mod.rs /home/nobikko/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/de.rs /home/nobikko/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/ser.rs /home/nobikko/wasm-nes-emulator/target/wasm32-unknown-unknown/debug/build/serde-52d2528b03c229bb/out/private.rs
+
+/home/nobikko/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/lib.rs:
+/home/nobikko/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/integer128.rs:
+/home/nobikko/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/mod.rs:
+/home/nobikko/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/de.rs:
+/home/nobikko/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/ser.rs:
+/home/nobikko/wasm-nes-emulator/target/wasm32-unknown-unknown/debug/build/serde-52d2528b03c229bb/out/private.rs:
+
+# env-dep:OUT_DIR=/home/nobikko/wasm-nes-emulator/target/wasm32-unknown-unknown/debug/build/serde-52d2528b03c229bb/out

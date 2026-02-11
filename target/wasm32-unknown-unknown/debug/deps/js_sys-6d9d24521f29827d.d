@@ -1,0 +1,7 @@
+/home/nobikko/wasm-nes-emulator/target/wasm32-unknown-unknown/debug/deps/js_sys-6d9d24521f29827d.d: /home/nobikko/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/js-sys-0.3.85/src/lib.rs
+
+/home/nobikko/wasm-nes-emulator/target/wasm32-unknown-unknown/debug/deps/libjs_sys-6d9d24521f29827d.rlib: /home/nobikko/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/js-sys-0.3.85/src/lib.rs
+
+/home/nobikko/wasm-nes-emulator/target/wasm32-unknown-unknown/debug/deps/libjs_sys-6d9d24521f29827d.rmeta: /home/nobikko/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/js-sys-0.3.85/src/lib.rs
+
+/home/nobikko/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/js-sys-0.3.85/src/lib.rs:

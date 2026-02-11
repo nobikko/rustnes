@@ -1,5 +1,3 @@
-/* @ts-self-types="./nes_wasm.d.ts" */
-
 /**
  * NES Emulator wrapper for WASM
  */
