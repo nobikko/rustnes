@@ -3,6 +3,9 @@
 use nes_core::system::NesSystem;
 use wasm_bindgen::prelude::wasm_bindgen;
 use wasm_bindgen::JsError;
+use js_sys::Uint8Array;
+use js_sys::ArrayBuffer;
+use std::slice;
 
 /// NES Emulator wrapper for WASM
 #[wasm_bindgen]
@@ -21,9 +24,9 @@ impl NesEmulator {
     }
 
     /// Load a ROM from bytes
-    pub fn load_rom(&mut self, rom_data: &[u8]) -> Result<(), JsError> {
-        self.system.load_rom(rom_data).map_err(|e| JsError::new(&e.to_string()))?;
-        Ok(())
+    /// Returns true on success, false on failure
+    pub fn load_rom(&mut self, rom_data: &[u8]) -> bool {
+        self.system.load_rom(rom_data).is_ok()
     }
 
     /// Reset the emulator
@@ -52,25 +55,51 @@ impl NesEmulator {
     /// Get PPU framebuffer (256x240 RGB pixels)
     /// Returns raw RGB data (76800 bytes: 256 * 240 * 3)
     #[wasm_bindgen(getter)]
-    pub fn framebuffer_rgb(&self) -> Vec<u8> {
+    pub fn framebuffer_rgb(&self) -> Uint8Array {
         let ppu = self.system.ppu();
-        let mut framebuffer = Vec::with_capacity(256 * 240 * 3);
-
-        // For now, render a simple test pattern based on scanline
-        // In a full implementation, this would render the actual PPU output
         let scanline = ppu.scanline() as usize;
+
+        // Create a fixed-size buffer on the heap
+        let buffer_size = 256 * 240 * 3;
+        let mut buffer = Vec::with_capacity(buffer_size);
+        buffer.resize(buffer_size, 0);
+
+        // Render a simple test pattern based on scanline
         for y in 0..240 {
             for x in 0..256 {
+                let idx = (y * 256 + x) * 3;
                 // Simple pattern: gradient based on position and scanline
-                let r = ((x / 16) as u8 * 16) % 255;
-                let g = ((y / 16) as u8 * 16) % 255;
-                let b = ((scanline / 4) as u8 * 4) % 255;
-                framebuffer.push(r);
-                framebuffer.push(g);
-                framebuffer.push(b);
+                buffer[idx] = ((x / 16) as u8 * 16) % 255;
+                buffer[idx + 1] = ((y / 16) as u8 * 16) % 255;
+                buffer[idx + 2] = ((scanline / 4) as u8 * 4) % 255;
             }
         }
-        framebuffer
+
+        // Get the pointer and length
+        let len = buffer.len();
+        let ptr = buffer.as_ptr() as usize;
+
+        // Create a new ArrayBuffer
+        let array_buffer = ArrayBuffer::new(buffer_size as u32);
+
+        // Create Uint8Array from the ArrayBuffer
+        let arr = Uint8Array::new(&array_buffer);
+
+        // Copy data using copy_from
+        unsafe {
+            let src_slice = slice::from_raw_parts(ptr as *const u8, len);
+            arr.copy_from(src_slice);
+        }
+
+        // Forget the buffer to prevent double free
+        std::mem::forget(buffer);
+
+        arr
+    }
+
+    /// Get PPU framebuffer length
+    pub fn framebuffer_len(&self) -> usize {
+        256 * 240 * 3
     }
 
     /// Get current PPU scanline
