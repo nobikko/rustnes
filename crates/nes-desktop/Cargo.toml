@@ -1,0 +1,15 @@
+[package]
+name = "nes-desktop"
+version = "0.1.0"
+edition = "2021"
+description = "NES emulator desktop app with minifb"
+license = "MIT"
+
+[[bin]]
+name = "nes-desktop"
+path = "src/main.rs"
+
+[dependencies]
+nes-core = { path = "../nes-core" }
+minifb = "0.27"
+clap = { version = "4.4", features = ["derive"] }

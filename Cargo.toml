@@ -3,5 +3,6 @@ members = [
     "crates/nes-core",
     "crates/nes-cli",
     "crates/nes-wasm",
+    "crates/nes-desktop",
 ]
 resolver = "2"
