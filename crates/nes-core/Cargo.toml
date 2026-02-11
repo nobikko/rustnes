@@ -21,3 +21,7 @@ path = "tests/cpu.rs"
 [[test]]
 name = "ppu"
 path = "tests/ppu.rs"
+
+[[test]]
+name = "compare_nestest"
+path = "tests/compare_nestest.rs"

@@ -176,7 +176,11 @@ impl SimpleCartridge {
         if offset < self.prg_rom.len() {
             self.prg_rom[offset]
         } else {
-            0xFF
+            // For 16KB PRG ROM, $8000-$BFFF and $C000-$FFFF both map to same data (mirroring)
+            // Wrap the offset to the first 16KB
+            let prg_size = self.prg_rom.len();
+            let mirrored_offset = offset % prg_size;
+            self.prg_rom[mirrored_offset]
         }
     }
 

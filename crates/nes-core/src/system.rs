@@ -3,6 +3,7 @@
 //! This module integrates all NES components (CPU, PPU, APU, Bus) into a working system.
 
 use crate::bus::{Bus, SimpleCartridge};
+use crate::cpu::Bus as CpuBus;
 use crate::cartridge::{Cartridge, CartridgeError};
 use crate::cpu::{Cpu, CpuError};
 use crate::ppu::Ppu;
@@ -57,6 +58,14 @@ impl NesSystem {
     /// Step the system by one instruction (CPU)
     /// This also steps PPU appropriately (3 PPU cycles per CPU cycle)
     pub fn step(&mut self) -> Result<bool, CpuError> {
+        // Get opcode and decode it before stepping
+        let opcode_byte = self.bus.read(self.cpu.registers().pc);
+        let opcode = match self.cpu.decode_opcode(opcode_byte) {
+            Ok(op) => op,
+            Err(e) => return Err(e),
+        };
+        let instruction_cycles = self.cpu.instruction_cycles(opcode).max(1);
+
         // Step CPU
         let running = self.cpu.step(&mut self.bus)?;
         if !running {
@@ -64,13 +73,12 @@ impl NesSystem {
         }
 
         // Step PPU (3 cycles for each CPU cycle)
-        let cycles = self.cpu.registers().pc as u8; // Approximate
-        for _ in 0..(cycles.max(1) * 3) {
+        for _ in 0..(instruction_cycles as usize * 3) {
             self.ppu.step();
         }
 
         // Step APU
-        self.apu.step(cycles.max(1));
+        self.apu.step(instruction_cycles as u8);
 
         Ok(true)
     }
@@ -140,6 +148,16 @@ impl NesSystem {
     /// Get frame count
     pub fn frame_count(&self) -> u64 {
         self.frame_count
+    }
+
+    /// Read a byte from memory via the bus
+    pub fn read_memory(&mut self, address: u16) -> u8 {
+        self.bus.read(address)
+    }
+
+    /// Write a byte to memory via the bus
+    pub fn write_memory(&mut self, address: u16, value: u8) {
+        self.bus.write(address, value);
     }
 }
 
