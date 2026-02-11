@@ -96,11 +96,11 @@ impl PpuStatus {
 pub struct PpuMask(u8);
 
 impl PpuMask {
-    pub const GRayscale: u8 = 0b10000000;
-    pub const RENDER_BG_LEFT: u8 = 0b00100000;
-    pub const RENDER_SPR_LEFT: u8 = 0b00010000;
-    pub const HIGHLIGHT_BG: u8 = 0b00001000;
-    pub const HIGHLIGHT_SPR: u8 = 0b00000100;
+    pub const GRAYSCALE: u8 = 0b10000000;
+    pub const RENDER_BG: u8 = 0b00001000;     // Bit 3 - render background
+    pub const RENDER_SPR: u8 = 0b00000100;    // Bit 2 - render sprites
+    pub const RENDER_BG_LEFT: u8 = 0b00100000;  // Bit 5 - render background in left 8px
+    pub const RENDER_SPR_LEFT: u8 = 0b00010000; // Bit 4 - render sprites in left 8px
     pub const EMPHASIZE_RED: u8 = 0b00000010;
     pub const EMPHASIZE_GREEN: u8 = 0b00000001;
 
@@ -109,11 +109,13 @@ impl PpuMask {
     }
 
     pub fn render_background(&self) -> bool {
-        (self.0 & Self::RENDER_BG_LEFT) != 0
+        // Background rendering is enabled if bit 3 (RENDER_BG) or bit 5 (RENDER_BG_LEFT) is set
+        (self.0 & (Self::RENDER_BG | Self::RENDER_BG_LEFT)) != 0
     }
 
     pub fn render_sprites(&self) -> bool {
-        (self.0 & Self::RENDER_SPR_LEFT) != 0
+        // Sprite rendering is enabled if bit 2 (RENDER_SPR) or bit 4 (RENDER_SPR_LEFT) is set
+        (self.0 & (Self::RENDER_SPR | Self::RENDER_SPR_LEFT)) != 0
     }
 }
 
@@ -191,8 +193,18 @@ impl Ppu {
     }
 
     /// Set the CHR ROM data for pattern tables
+    /// Also loads the palette data from the second 4KB bank (offset 4096)
     pub fn set_chr_rom(&mut self, chr_rom: Vec<u8>) {
         self.chr_rom = chr_rom;
+        // Load palette data from offset 4096 (second 4KB bank of CHR ROM)
+        // The palette is 32 bytes (8 palettes x 4 colors)
+        let palette_start = 4096;
+        let palette_end = palette_start + PALETTE_SIZE;
+        if palette_end <= self.chr_rom.len() {
+            for i in 0..PALETTE_SIZE {
+                self.palette[i] = self.chr_rom[palette_start + i];
+            }
+        }
     }
 
     /// Reset the PPU
@@ -403,20 +415,28 @@ impl Ppu {
         self.dot
     }
 
-    /// Get palette entry (4 bytes per palette: 4 colors, 3 bytes each = 12 bytes)
+    /// Get palette entry (4 bytes per palette: 4 colors)
     /// Returns the palette index for background/sprites
+    /// Each byte contains two 4-bit color indices
     pub fn get_palette(&self, palette_idx: usize) -> [u8; 4] {
         if palette_idx >= 8 {
             return [0; 4];
         }
-        // Each palette is 4 bytes in palette memory
-        // Format: byte0=colors 0-1, byte1=colors 2-3 (lower 2 bits each)
         let base = palette_idx * 4;
-        let c0 = self.palette[base] & 0x3F;
-        let c1 = (self.palette[base] >> 4) & 0x3F;
-        let c2 = self.palette[base + 1] & 0x3F;
-        let c3 = (self.palette[base + 1] >> 4) & 0x3F;
+        let c0 = self.palette[base] & 0x0F;
+        let c1 = (self.palette[base] >> 4) & 0x0F;
+        let c2 = self.palette[base + 1] & 0x0F;
+        let c3 = (self.palette[base + 1] >> 4) & 0x0F;
         [c0 as u8, c1 as u8, c2 as u8, c3 as u8]
+    }
+
+    /// Get the palette byte at the given index (for direct access)
+    pub fn get_palette_byte(&self, byte_idx: usize) -> u8 {
+        if byte_idx < PALETTE_SIZE {
+            self.palette[byte_idx]
+        } else {
+            0
+        }
     }
 
     /// Render a scanline to a framebuffer
@@ -600,8 +620,8 @@ impl Ppu {
                             if pixel_x >= 0 && pixel_x < 8 {
                                 let color = get_tile_pixel(actual_tile as u8, pixel_x as u8, actual_y as u8, sprite_pattern_table_base, &self.chr_rom);
                                 if color > 0 {
-                                    // Sprite palette is in bits 0-1 of flags for 16x16 sprites
-                                    let sprite_palette = (flags as usize & 3) * 4;
+                                    // Sprite palette is in bits 4-5 of flags
+                                    let sprite_palette = ((flags >> 4) as usize & 3) * 4;
                                     sprite_color = ((sprite_palette + color as usize) as u8).min(63);
                                     sprite_found = true;
                                     break;
@@ -618,7 +638,7 @@ impl Ppu {
                                 let color = get_tile_pixel(actual_tile, pixel_x as u8, actual_y as u8, sprite_pattern_table_base, &self.chr_rom);
 
                                 if color > 0 {
-                                    let sprite_palette = (flags as usize & 3) * 4;
+                                    let sprite_palette = ((flags >> 4) as usize & 3) * 4;
                                     sprite_color = (sprite_palette as u8 + color).min(63);
                                     sprite_found = true;
                                     break;
@@ -672,5 +692,40 @@ mod tests {
         let _ = ppu.read(0x2002); // Read PPUSTATUS
         // VBLANK should be cleared on read
         assert!(!ppu.status.vblank());
+    }
+
+    #[test]
+    fn test_ppu_set_chr_rom_loads_palette() {
+        let mut ppu = Ppu::new();
+
+        // Create a CHR ROM with known palette data
+        let mut chr_rom = vec![0; 8192];
+        // Set first palette (background) to specific values
+        chr_rom[4096] = 0x12; // Palette byte 0
+        chr_rom[4097] = 0x34; // Palette byte 1
+        chr_rom[4098] = 0x56; // Palette byte 2
+        chr_rom[4099] = 0x78; // Palette byte 3
+
+        ppu.set_chr_rom(chr_rom);
+
+        // Verify palette was loaded
+        assert_eq!(ppu.get_palette_byte(0), 0x12);
+        assert_eq!(ppu.get_palette_byte(1), 0x34);
+        assert_eq!(ppu.get_palette_byte(2), 0x56);
+        assert_eq!(ppu.get_palette_byte(3), 0x78);
+    }
+
+    #[test]
+    fn test_ppu_get_palette() {
+        let mut ppu = Ppu::new();
+
+        // Set up palette with known values
+        ppu.palette[0] = 0x01; // Colors: 1, 0
+        ppu.palette[1] = 0x23; // Colors: 3, 2
+        ppu.palette[2] = 0x45; // Colors: 5, 4
+        ppu.palette[3] = 0x67; // Colors: 7, 6
+
+        let palette = ppu.get_palette(0);
+        assert_eq!(palette, [1, 0, 3, 2]);
     }
 }
