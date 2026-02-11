@@ -20,11 +20,11 @@ struct Args {
     frames: u64,
 
     /// Dump CPU state after execution
-    #[arg(short, long)]
+    #[arg(short = 'c', long)]
     dump_cpu: bool,
 
     /// Dump PPU state after execution
-    #[arg(short, long)]
+    #[arg(short = 'p', long)]
     dump_ppu: bool,
 }
 
