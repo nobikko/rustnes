@@ -155,6 +155,10 @@ pub struct Ppu {
     scanline: i16,
     /// Frame complete flag
     frame_complete: bool,
+    /// CHR ROM data for pattern tables (8KB typical)
+    chr_rom: Vec<u8>,
+    /// Write toggle for PPUSCROLL and PPUADDR
+    write_toggle: bool,
 }
 
 impl Ppu {
@@ -181,7 +185,14 @@ impl Ppu {
             dot: 0,
             scanline: -1,
             frame_complete: false,
+            write_toggle: false,
+            chr_rom: vec![0; 8192], // Default 8KB CHR ROM
         }
+    }
+
+    /// Set the CHR ROM data for pattern tables
+    pub fn set_chr_rom(&mut self, chr_rom: Vec<u8>) {
+        self.chr_rom = chr_rom;
     }
 
     /// Reset the PPU
@@ -206,6 +217,8 @@ impl Ppu {
         self.dot = 0;
         self.scanline = -1;
         self.frame_complete = false;
+        self.write_toggle = false;
+        // Keep chr_rom intact
     }
 
     /// Step the PPU by one cycle
@@ -266,10 +279,13 @@ impl Ppu {
             // $2002 - PPUSTATUS
             0x2002 => {
                 let status = self.status.0;
-                // Clear VBLANK flag on read
+                // Clear VBLANK flag on read (VBLANK is set at scanline 241)
+                // The VBLANK flag is cleared by reading PPUSTATUS
                 self.status = PpuStatus::new(status & !PpuStatus::VBLANK);
-                // Reset fine scroll
-                self.scroll = 0;
+                // Reset fine scroll bits (not full scroll register)
+                self.fine_scroll_x = 0;
+                self.fine_y = 0;
+                // Return the read buffer on first read after address increment
                 status
             }
             // $2003 - OAMADDR (read only returns OAMDATA after write)
@@ -288,8 +304,11 @@ impl Ppu {
             }
             // $2007 - PPUDATA
             0x2007 => {
-                let value = self.vram[self.address as usize];
-                // Update address for next read
+                // First read after address set returns the read buffer (previous VRAM content)
+                // Second read returns current VRAM content and updates read buffer
+                let value = self.read_buffer;
+                self.read_buffer = self.vram[self.address as usize];
+                // Update address for next access
                 let increment = if (self.control.0 & PpuCtrl::VRAM_INC) != 0 { 32 } else { 1 };
                 self.address = self.address.wrapping_add(increment as u16);
                 value
@@ -324,30 +343,39 @@ impl Ppu {
             }
             // $2005 - PPUSCROLL
             0x2005 => {
-                if self.dot < 256 {
+                if !self.write_toggle {
                     // First write - X scroll (fine and coarse)
+                    // X fine scroll is bits 0-2, X coarse scroll is bits 3-7
                     self.fine_scroll_x = value & 0x07;
                     self.coarse_x = (value >> 3) & 0x1F;
+                    self.write_toggle = true;
                 } else {
-                    // Second write - Y scroll
+                    // Second write - Y scroll (fine and coarse)
                     self.fine_y = value & 0x07;
                     self.coarse_y = (value >> 3) & 0x1F;
+                    self.write_toggle = false;
                 }
             }
             // $2006 - PPUADDR
             0x2006 => {
-                if self.dot < 256 {
-                    // First write - high byte
-                    self.address = (self.address & 0x00FF) | ((value as u16) << 8);
+                if !self.write_toggle {
+                    // First write - high byte (bits 15-8 of address)
+                    // The high 2 bits (15-14) select the nametable
+                    // Bits 13-0 are the tile offset within the nametable
+                    self.address = (self.address & 0x00FF) | ((value as u16) & 0x3F) << 8;
+                    self.write_toggle = true;
                 } else {
-                    // Second write - low byte
+                    // Second write - low byte (bits 7-0 of address)
                     self.address = (self.address & 0xFF00) | (value as u16);
+                    self.write_toggle = false;
                 }
             }
             // $2007 - PPUDATA
             0x2007 => {
                 self.vram[self.address as usize] = value;
-                // Update address for next write
+                // Write also updates the read buffer with the value being written
+                self.read_buffer = value;
+                // Update address for next access
                 let increment = if (self.control.0 & PpuCtrl::VRAM_INC) != 0 { 32 } else { 1 };
                 self.address = self.address.wrapping_add(increment as u16);
             }
@@ -373,6 +401,247 @@ impl Ppu {
     /// Get current dot
     pub fn dot(&self) -> u16 {
         self.dot
+    }
+
+    /// Get palette entry (4 bytes per palette: 4 colors, 3 bytes each = 12 bytes)
+    /// Returns the palette index for background/sprites
+    pub fn get_palette(&self, palette_idx: usize) -> [u8; 4] {
+        if palette_idx >= 8 {
+            return [0; 4];
+        }
+        // Each palette is 4 bytes in palette memory
+        // Format: byte0=colors 0-1, byte1=colors 2-3 (lower 2 bits each)
+        let base = palette_idx * 4;
+        let c0 = self.palette[base] & 0x3F;
+        let c1 = (self.palette[base] >> 4) & 0x3F;
+        let c2 = self.palette[base + 1] & 0x3F;
+        let c3 = (self.palette[base + 1] >> 4) & 0x3F;
+        [c0 as u8, c1 as u8, c2 as u8, c3 as u8]
+    }
+
+    /// Render a scanline to a framebuffer
+    /// framebuffer should be sized for at least `width` * 3 bytes per pixel (RGB)
+    /// Returns the number of bytes written to the framebuffer
+    pub fn render_scanline(&self, scanline: usize, framebuffer: &mut [u8], width: usize) {
+        if scanline >= 240 || framebuffer.len() < width * 3 {
+            return;
+        }
+
+        // Get the render mask
+        let render_bg = self.mask.render_background();
+        let render_sprites = self.mask.render_sprites();
+
+        // NES color palette (6-bit values converted to 8-bit RGB)
+        // These are the standard NES palettes (64 colors)
+        let palette_table: [(u8, u8, u8); 64] = [
+            (84, 84, 84), (0, 30, 116), (8, 22, 147), (48, 12, 154), (92, 4, 121), (136, 6, 85), (147, 22, 34), (132, 48, 0), (76, 84, 0), (12, 102, 0), (0, 120, 44), (0, 106, 132), (0, 84, 136), (0, 0, 0), (0, 0, 0), (0, 0, 0),
+            (160, 160, 160), (0, 70, 196), (48, 92, 255), (92, 70, 255), (136, 58, 255), (196, 78, 255), (204, 92, 204), (255, 114, 136), (255, 147, 84), (255, 173, 0), (216, 196, 0), (120, 214, 0), (0, 230, 116), (0, 196, 214), (0, 160, 255), (0, 0, 0),
+            (255, 255, 255), (48, 152, 255), (120, 147, 255), (176, 138, 255), (220, 132, 255), (255, 152, 255), (255, 165, 214), (255, 188, 160), (255, 214, 136), (255, 234, 120), (255, 255, 160), (188, 255, 160), (120, 255, 188), (120, 255, 255), (120, 214, 255), (84, 84, 255),
+            (255, 255, 255), (166, 230, 255), (188, 220, 255), (204, 214, 255), (214, 204, 255), (220, 204, 255), (214, 208, 230), (220, 214, 204), (234, 220, 196), (255, 230, 188), (240, 234, 196), (214, 240, 196), (188, 244, 214), (188, 244, 230), (188, 230, 244), (176, 176, 255),
+        ];
+
+        // Calculate pattern table bases
+        let bg_pattern_table_base = if (self.control.0 & PpuCtrl::BG_PATTERN_TABLE) != 0 { 4096 } else { 0 };
+        let sprite_pattern_table_base = if (self.control.0 & PpuCtrl::SPR_PATTERN_TABLE) != 0 { 4096 } else { 0 };
+
+        // Helper function to get a pixel from a tile
+        // Reads 2 bytes from pattern table and extracts the pixel color index
+        let get_tile_pixel = |tile_idx: u8, pixel_x: u8, pixel_y: u8, pattern_base: usize, chr_rom: &[u8]| -> u8 {
+            // Pattern table entry: each tile is 16 bytes (8x8 pixels, 2 bits per pixel)
+            let tile_base = (tile_idx as usize) * 16;
+
+            // Get the two planes (bit 0 and bit 1 for each pixel)
+            let plane0_addr = pattern_base + tile_base + (pixel_y as usize);
+            let plane1_addr = pattern_base + tile_base + 8 + (pixel_y as usize);
+
+            if plane0_addr >= chr_rom.len() {
+                return 0;
+            }
+
+            let plane0 = chr_rom[plane0_addr];
+            let plane1 = if plane1_addr < chr_rom.len() { chr_rom[plane1_addr] } else { 0 };
+
+            // Extract the pixel bit from each plane (bit 7 is leftmost)
+            let bit = 7 - (pixel_x as usize);
+            let bit0 = (plane0 >> bit) & 1;
+            let bit1 = (plane1 >> bit) & 1;
+
+            // Combine to get color index (2 bits = 0-3)
+            (bit1 << 1) | bit0
+        };
+
+        // Helper to get palette index from attribute table
+        // Attribute table is at $23C0-$2FFF (256 bytes, covers 32x30 tile area)
+        // Each byte controls a 4x4 tile block
+        // Bits 0-1: upper-left quadrant, Bits 2-3: upper-right, Bits 4-5: lower-left, Bits 6-7: lower-right
+        let get_attr_palette = |attr: u8, tile_x: u8, tile_y: u8| -> u8 {
+            // Determine which quadrant this tile is in within its 4x4 block
+            let x_in_block = tile_x % 4;
+            let y_in_block = tile_y % 4;
+
+            let shift = if x_in_block < 2 {
+                if y_in_block < 2 { 0 } else { 4 }
+            } else {
+                if y_in_block < 2 { 2 } else { 6 }
+            };
+
+            ((attr >> shift) & 0x03) as u8
+        };
+
+        // Get the background nametable base address
+        // Nametables are at $2000-$23FF in VRAM
+        // With mirroring: nametable 0 = $2000-$23FF, nametable 1 = $2400-$27FF, etc.
+        let nametable_base = (0x2000 + (self.nametable as usize) * 1024) as usize;
+
+        // Attribute table is at $23C0-$2FFF (32 bytes per nametable)
+        let attr_table_base = nametable_base + 960; // $23C0 - $2000 = 0x3C0 = 960
+
+        // Render background
+        for x in 0..width.min(256) {
+            // Calculate scroll position
+            let fine_x = self.fine_scroll_x as i32;
+            let coarse_x = self.coarse_x as i32;
+            let coarse_y = self.coarse_y as i32;
+
+            // Calculate the tile X position accounting for fine scroll
+            // The fine scroll tells us how many pixels into the tile to start
+            let tile_x = if x as i32 >= fine_x {
+                coarse_x + ((x as i32 - fine_x) / 8)
+            } else {
+                // Wrapping to the other side of the screen
+                coarse_x + 32 - ((fine_x - x as i32) / 8)
+            } % 32;
+
+            // Calculate pixel position within the tile (0-7)
+            let pixel_x = if x as i32 >= fine_x {
+                (x as i32 - fine_x) % 8
+            } else {
+                8 - (fine_x - x as i32) % 8
+            } as u8;
+
+            // Calculate tile Y position
+            // For Y, we need to account for the current scanline relative to the coarse Y
+            let scanline_in_tile = scanline as i32 % 8;
+            let tile_y = (coarse_y + (scanline as i32 / 8)) % 32;
+
+            let color_idx = if render_bg {
+                // Calculate nametable address for this tile
+                let nametable_addr = nametable_base + (tile_y as usize) * 32 + (tile_x as usize);
+
+                if nametable_addr >= self.vram.len() {
+                    0
+                } else {
+                    let tile_idx = self.vram[nametable_addr];
+
+                    // Get the attribute table byte for this tile
+                    // Attribute table is organized in 4x4 tile blocks
+                    let attr_tile_x = tile_x as u8 / 4;
+                    let attr_tile_y = tile_y as u8 / 4;
+                    let attr_addr = attr_table_base + (attr_tile_y as usize) * 8 + (attr_tile_x as usize);
+
+                    let palette_select = if attr_addr < self.vram.len() {
+                        let attr = self.vram[attr_addr];
+                        get_attr_palette(attr, tile_x as u8, tile_y as u8)
+                    } else {
+                        0
+                    };
+
+                    // Get the actual color from the tile using the pattern table
+                    let pixel_y = scanline_in_tile as u8;
+
+                    // Get color index from pattern table (0-3)
+                    let color = get_tile_pixel(tile_idx, pixel_x, pixel_y, bg_pattern_table_base, &self.chr_rom);
+
+                    // Use palette to get final color index (0-63)
+                    if color > 0 {
+                        palette_select * 4 + color
+                    } else {
+                        0 // Background color (palette index 0 of selected palette)
+                    }
+                }
+            } else if render_sprites {
+                // Simple sprite rendering - check OAM for sprites on this scanline
+                let mut sprite_color: u8 = 0;
+                let mut sprite_found = false;
+
+                for sprite_idx in 0..64 {
+                    let oam_base = (sprite_idx as usize) * 4;
+
+                    if oam_base + 3 >= self.oam.len() {
+                        break;
+                    }
+
+                    let sprite_y = self.oam[oam_base] as i32;
+                    let tile_idx = self.oam[oam_base + 1];
+                    let flags = self.oam[oam_base + 2];
+                    let sprite_x = self.oam[oam_base + 3] as i32;
+
+                    // Check if sprite is on this scanline
+                    let sprite_height = if self.control.sprite_size() { 16 } else { 8 };
+
+                    // Sprite is visible if: sprite_y <= scanline < sprite_y + sprite_height
+                    // Sprite Y position is offset by 1 (sprite at Y=0 is drawn at scanline 1)
+                    if (scanline as i32) >= (sprite_y + 1) && (scanline as i32) < (sprite_y + 1 + sprite_height as i32) {
+                        let pixel_y = (scanline as i32 - (sprite_y + 1)) as u8;
+
+                        if self.control.sprite_size() {
+                            // 16x16 sprite - two tiles stacked vertically
+                            let tile_row = if pixel_y >= 8 { 1 } else { 0 };
+                            let actual_y = if (flags & 0x80) != 0 { 7 - pixel_y % 8 } else { pixel_y % 8 };
+
+                            let actual_tile = if (flags & 0x40) != 0 {
+                                // Flipped vertically
+                                tile_idx as u16 + (1 - tile_row) * 2
+                            } else {
+                                tile_idx as u16 + tile_row as u16
+                            };
+
+                            let pixel_x = x as i32 - sprite_x;
+                            if pixel_x >= 0 && pixel_x < 8 {
+                                let color = get_tile_pixel(actual_tile as u8, pixel_x as u8, actual_y as u8, sprite_pattern_table_base, &self.chr_rom);
+                                if color > 0 {
+                                    // Sprite palette is in bits 0-1 of flags for 16x16 sprites
+                                    let sprite_palette = (flags as usize & 3) * 4;
+                                    sprite_color = ((sprite_palette + color as usize) as u8).min(63);
+                                    sprite_found = true;
+                                    break;
+                                }
+                            }
+                        } else {
+                            // 8x8 sprite
+                            let pixel_x = x as i32 - sprite_x;
+
+                            if pixel_x >= 0 && pixel_x < 8 {
+                                let actual_y = if (flags & 0x80) != 0 { 7 - pixel_y } else { pixel_y };
+                                let actual_tile = if (flags & 0x40) != 0 { tile_idx + 1 } else { tile_idx };
+
+                                let color = get_tile_pixel(actual_tile, pixel_x as u8, actual_y as u8, sprite_pattern_table_base, &self.chr_rom);
+
+                                if color > 0 {
+                                    let sprite_palette = (flags as usize & 3) * 4;
+                                    sprite_color = (sprite_palette as u8 + color).min(63);
+                                    sprite_found = true;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+                if sprite_found {
+                    sprite_color
+                } else {
+                    0  // Black when nothing rendered
+                }
+            } else {
+                0  // Black when nothing rendered
+            };
+
+            let rgb = palette_table[color_idx as usize % palette_table.len()];
+            let idx = x * 3;
+            framebuffer[idx] = rgb.0;
+            framebuffer[idx + 1] = rgb.1;
+            framebuffer[idx + 2] = rgb.2;
+        }
     }
 }
 

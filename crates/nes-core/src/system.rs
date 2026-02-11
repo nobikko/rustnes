@@ -135,6 +135,11 @@ impl NesSystem {
         &mut self.ppu
     }
 
+    /// Get CHR ROM data
+    pub fn chr_rom(&self) -> Option<&[u8]> {
+        self.bus.chr_rom()
+    }
+
     /// Get APU reference
     pub fn apu(&self) -> &Apu {
         &self.apu
