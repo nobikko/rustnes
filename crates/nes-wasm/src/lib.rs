@@ -2,7 +2,6 @@
 
 use nes_core::system::NesSystem;
 use wasm_bindgen::prelude::wasm_bindgen;
-use wasm_bindgen::JsError;
 use js_sys::Uint8Array;
 use js_sys::ArrayBuffer;
 use std::slice;
