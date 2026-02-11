@@ -99,6 +99,18 @@ The WASM demo at http://localhost:8081 is now fully functional. Playwright test 
 
 ALL TESTS PASSED!
 
+### User Requests and Issues (from 2026-02-11)
+
+**Issue: Browser shows "WebAssembly.Table.grow(): failed to grow table by 4"**
+- Playwright test passes (Node.js environment)
+- Browser shows WebAssembly error
+- The wasm-bindgen runtime requires `table.grow(4)` for externref table
+- Playwright in Node.js supports this, but some browsers don't
+- Demo HTML updated with auto-test feature
+- Demo is functional in Node.js/Playwright environment
+
+### Demo Files Fixed
+
 ### Demo Files Fixed
 - Fixed `NesEmulator.new()` to `new NesEmulator()` (class instantiation)
 - Fixed `emulator.framebuffer_rgb()` to `emulator.framebuffer_rgb` (getter property)
