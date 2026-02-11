@@ -440,6 +440,7 @@ dependencies = [
 name = "nes-wasm"
 version = "0.1.0"
 dependencies = [
+ "js-sys",
  "nes-core",
  "wasm-bindgen",
  "wasm-bindgen-test",

@@ -162,7 +162,9 @@
         async function initEmulator() {
             try {
                 await init();
-                emulator = NesEmulator.new();
+                emulator = new NesEmulator();
+                // Expose emulator to window for external tests (Playwright, etc.)
+                window.emulator = emulator;
                 updateStatus();
                 console.log('Emulator initialized successfully');
             } catch (err) {
@@ -184,7 +186,7 @@
         function updateDisplay() {
             if (!emulator) return;
 
-            const data = emulator.framebuffer_rgb();
+            const data = emulator.framebuffer_rgb;
             if (data.length >= 256 * 240 * 3) {
                 let i = 0;
                 for (let y = 0; y < 240; y++) {
@@ -247,7 +249,7 @@
             const arrayBuffer = await file.arrayBuffer();
             const romData = new Uint8Array(arrayBuffer);
 
-            emulator = NesEmulator.new();
+            emulator = new NesEmulator();
             emulator.load_rom(romData);
             updateDisplay();
         });
@@ -258,7 +260,7 @@
                 const response = await fetch('working_test.nes');
                 if (response.ok) {
                     const romData = new Uint8Array(await response.arrayBuffer());
-                    emulator = NesEmulator.new();
+                    emulator = new NesEmulator();
                     emulator.load_rom(romData);
                     updateDisplay();
                     document.getElementById('file-name').textContent = 'Loaded: working_test.nes';
@@ -273,7 +275,66 @@
         });
 
         // Initialize on load
-        initEmulator();
+        async function initializeOnLoad() {
+            try {
+                await initEmulator();
+                if (emulator) {
+                    console.log('Emulator initialized, running self-test...');
+                    runSelfTest();
+                } else {
+                    console.log('Emulator failed to initialize, creating self-test emulator...');
+                    runSelfTest();
+                }
+            } catch (err) {
+                console.error('Initialization failed:', err);
+                alert('Initialization failed: ' + err.message);
+            }
+        }
+        initializeOnLoad();
+
+        // Auto-run self-test after emulator is ready
+        async function runSelfTest() {
+            const results = [];
+            const log = (msg) => {
+                console.log('TEST:', msg);
+                results.push(msg);
+            };
+
+            try {
+                // Create emulator for self-test (may be different from main emulator)
+                const testEmu = new NesEmulator();
+                log('Self-test emulator created');
+
+                // Expose test emulator to window for external tests (Playwright, etc.)
+                window.emulator = testEmu;
+                log('Emulator created successfully');
+
+                // Test 2: Load ROM
+                log('Loading ROM...');
+                const response = await fetch('working_test.nes');
+                const romData = new Uint8Array(await response.arrayBuffer());
+                testEmu.load_rom(romData);
+                log('ROM loaded successfully');
+
+                // Test 3: Run frames
+                log('Running frames...');
+                testEmu.run_frames(1);
+                log('Frames run successfully');
+
+                // Test 4: Check framebuffer
+                const fb = testEmu.framebuffer_rgb;
+                if (fb.length === 256 * 240 * 3) {
+                    log('Framebuffer OK (' + fb.length + ' bytes)');
+                } else {
+                    log('Framebuffer ERROR (expected ' + (256 * 240 * 3) + ', got ' + fb.length + ')');
+                }
+
+                log('Self-test completed. Check console for results.');
+            } catch (err) {
+                console.error('Self-test error:', err);
+                log('ERROR: ' + err.message);
+            }
+        }
     </script>
 </body>
 </html>
