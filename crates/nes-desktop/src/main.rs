@@ -58,6 +58,12 @@ fn main() {
     }
     system.reset();
 
+    // Set CHR ROM for PPU rendering
+    let chr_rom = system.chr_rom().map(|c| c.to_vec());
+    if let Some(chr_rom) = chr_rom {
+        system.ppu_mut().set_chr_rom(chr_rom);
+    }
+
     // NES resolution is 256x240
     let nes_width = 256;
     let nes_height = 240;
@@ -90,12 +96,11 @@ fn main() {
         // Run one frame of emulation
         let _ = system.run_frames(1);
 
-        // Get PPU scanline for rendering effect
+        // Get PPU for rendering
         let ppu = system.ppu();
-        let scanline = ppu.scanline() as usize;
 
-        // Render framebuffer (test pattern for now)
-        render_framebuffer(&mut framebuffer, nes_width, nes_height, scanline);
+        // Render framebuffer from PPU
+        render_framebuffer(ppu, &mut framebuffer, nes_width, nes_height);
 
         // Convert RGB to RGBA (minifb uses 0xAABBGGRR format)
         for i in 0..nes_width * nes_height {
@@ -115,14 +120,8 @@ fn main() {
     println!("Emulator closed.");
 }
 
-fn render_framebuffer(framebuffer: &mut [u8], width: usize, height: usize, scanline: usize) {
+fn render_framebuffer(ppu: &nes_core::ppu::Ppu, framebuffer: &mut [u8], width: usize, height: usize) {
     for y in 0..height {
-        for x in 0..width {
-            let idx = (y * width + x) * 3;
-            // Simple gradient pattern based on position and scanline
-            framebuffer[idx] = ((x / 16) as u8 * 16) % 255;
-            framebuffer[idx + 1] = ((y / 16) as u8 * 16) % 255;
-            framebuffer[idx + 2] = ((scanline / 4) as u8 * 4) % 255;
-        }
+        ppu.render_scanline(y, framebuffer, width);
     }
 }

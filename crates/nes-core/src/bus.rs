@@ -54,6 +54,11 @@ impl Bus {
     pub fn cartridge(&self) -> Option<&SimpleCartridge> {
         self.cartridge.as_ref()
     }
+
+    /// Get a reference to the CHR ROM, if present
+    pub fn chr_rom(&self) -> Option<&[u8]> {
+        self.cartridge.as_ref().map(|c| c.chr_rom.as_slice())
+    }
 }
 
 impl CpuBus for Bus {
