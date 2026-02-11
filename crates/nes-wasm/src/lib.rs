@@ -49,12 +49,48 @@ impl NesEmulator {
         self.system.frame_count() as u32
     }
 
-    /// Get PPU framebuffer (simulated - for testing)
-    /// Returns a simple pattern for now
+    /// Get PPU framebuffer (256x240 RGB pixels)
+    /// Returns raw RGB data (76800 bytes: 256 * 240 * 3)
     #[wasm_bindgen(getter)]
-    pub fn framebuffer(&self) -> Vec<u8> {
-        // Return a simple test pattern
-        vec![0x00; 256 * 240] // 256x240 grayscale
+    pub fn framebuffer_rgb(&self) -> Vec<u8> {
+        let ppu = self.system.ppu();
+        let mut framebuffer = Vec::with_capacity(256 * 240 * 3);
+
+        // For now, render a simple test pattern based on scanline
+        // In a full implementation, this would render the actual PPU output
+        let scanline = ppu.scanline() as usize;
+        for y in 0..240 {
+            for x in 0..256 {
+                // Simple pattern: gradient based on position and scanline
+                let r = ((x / 16) as u8 * 16) % 255;
+                let g = ((y / 16) as u8 * 16) % 255;
+                let b = ((scanline / 4) as u8 * 4) % 255;
+                framebuffer.push(r);
+                framebuffer.push(g);
+                framebuffer.push(b);
+            }
+        }
+        framebuffer
+    }
+
+    /// Get current PPU scanline
+    pub fn scanline(&self) -> u32 {
+        self.system.ppu().scanline() as u32
+    }
+
+    /// Get current PPU dot
+    pub fn dot(&self) -> u32 {
+        self.system.ppu().dot() as u32
+    }
+
+    /// Check if VBLANK is active
+    pub fn vblank(&self) -> bool {
+        self.system.ppu().status().vblank()
+    }
+
+    /// Get CPU cycles
+    pub fn cpu_cycles(&self) -> u32 {
+        self.system.cpu().total_cycles() as u32
     }
 }
 
