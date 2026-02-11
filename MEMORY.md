@@ -62,11 +62,39 @@ Opcode::RTIImplied => {
 - Lines 531, 541, 578, 588, 593, 610, 653, 663, 670, 687, 753: Changed immediate mode instructions to use `address as u8` instead of `bus.read(address)`
 - Lines 736-742: Fixed RTI instruction to properly restore P register from stack
 
+#### /home/nobikko/wasm-nes-emulator/demo/index.html
+- Fixed `NesEmulator.new()` to `new NesEmulator()` (class instantiation)
+- Fixed `emulator.framebuffer_rgb()` to `emulator.framebuffer_rgb` (getter property)
+
 #### /home/nobikko/wasm-nes-emulator/crates/nes-core/tests/compare_nestest.rs
 - Modified debug output to show instructions 0-14 and 20-30
+
+#### /home/nobikko/wasm-nes-emulator/demo/index.html
+- Fixed `NesEmulator.new()` to `new NesEmulator()` (class instantiation)
+- Fixed `emulator.framebuffer_rgb()` to `emulator.framebuffer_rgb` (getter property)
+
+### WASM Demo Issues Fixed
+
+#### Issue 4: WebAssembly initialization error - Table.grow() failed
+The demo failed to initialize with error: `WebAssembly.Table.grow(): failed to grow table by 4`
+
+**Fix**: Rebuilt WASM module using `wasm-pack build --target web` to ensure proper JS/WASM bindings.
+
+#### Issue 5: NES Emulator.new() not a function
+The generated WASM wrapper exports a class, not a namespace with static methods.
+
+**Fix**: Changed all occurrences of `NesEmulator.new()` to `new NesEmulator()`.
+
+#### Issue 6: framebuffer_rgb is not a function
+The `framebuffer_rgb` is a getter property, not a method.
+
+**Fix**: Changed `emulator.framebuffer_rgb()` to `emulator.framebuffer_rgb`.
 
 ### Test Results
 After the RTI fix, the test passes successfully:
 - Ran 1000 instructions
 - Matched 1000 log entries
 - Test result: ok. 1 passed; 0 failed
+
+### Demo Status
+The WASM demo is now working correctly at http://localhost:8081. All WebAssembly initialization errors have been resolved.
