@@ -1,0 +1,17 @@
+{
+  "name": "nes-wasm",
+  "type": "module",
+  "description": "WASM wrapper for NES emulator",
+  "version": "0.1.0",
+  "license": "MIT",
+  "files": [
+    "nes_wasm_bg.wasm",
+    "nes_wasm.js",
+    "nes_wasm.d.ts"
+  ],
+  "main": "nes_wasm.js",
+  "types": "nes_wasm.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}
