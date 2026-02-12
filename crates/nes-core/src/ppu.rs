@@ -161,6 +161,14 @@ pub struct Ppu {
     chr_rom: Vec<u8>,
     /// Write toggle for PPUSCROLL and PPUADDR
     write_toggle: bool,
+    /// Internal register t (temporary address latch for $2006)
+    /// Contains: nametable (2 bits), coarse Y (5 bits), fine Y (3 bits), coarse X (5 bits)
+    temp_address: u16,
+    /// Internal register v (current video address)
+    /// Contains: nametable (2 bits), coarse Y (5 bits), fine Y (3 bits), coarse X (5 bits)
+    video_address: u16,
+    /// Fine X scroll (bits 0-2)
+    fine_x: u8,
 }
 
 impl Ppu {
@@ -189,6 +197,9 @@ impl Ppu {
             frame_complete: false,
             write_toggle: false,
             chr_rom: vec![0; 8192], // Default 8KB CHR ROM
+            temp_address: 0,
+            video_address: 0,
+            fine_x: 0,
         }
     }
 
@@ -230,6 +241,9 @@ impl Ppu {
         self.scanline = -1;
         self.frame_complete = false;
         self.write_toggle = false;
+        self.temp_address = 0;
+        self.video_address = 0;
+        self.fine_x = 0;
         // Keep chr_rom intact
     }
 
@@ -358,13 +372,16 @@ impl Ppu {
                 if !self.write_toggle {
                     // First write - X scroll (fine and coarse)
                     // X fine scroll is bits 0-2, X coarse scroll is bits 3-7
-                    self.fine_scroll_x = value & 0x07;
-                    self.coarse_x = (value >> 3) & 0x1F;
+                    self.fine_x = value & 0x07;
+                    // Coarse X goes to temp_address's coarse X (bits 0-4)
+                    self.temp_address = (self.temp_address & 0xFFE0) | (((value >> 3) & 0x1F) as u16);
                     self.write_toggle = true;
                 } else {
                     // Second write - Y scroll (fine and coarse)
+                    // Y fine scroll is bits 0-2, Y coarse scroll is bits 3-7
                     self.fine_y = value & 0x07;
-                    self.coarse_y = (value >> 3) & 0x1F;
+                    // Coarse Y goes to temp_address's coarse Y (bits 5-9)
+                    self.temp_address = (self.temp_address & 0x03E0) | ((((value >> 3) & 0x1F) as u16) << 5);
                     self.write_toggle = false;
                 }
             }
@@ -372,13 +389,24 @@ impl Ppu {
             0x2006 => {
                 if !self.write_toggle {
                     // First write - high byte (bits 15-8 of address)
-                    // The high 2 bits (15-14) select the nametable
-                    // Bits 13-0 are the tile offset within the nametable
-                    self.address = (self.address & 0x00FF) | ((value as u16) & 0x3F) << 8;
+                    // Update temp_address with the high byte
+                    // Side effect: update nametable bits (bits 10-11) in video_address
+                    // The high byte contains: NNxxxxxx where NN is nametable bits
+                    // These affect the video_address's nametable bits when writing low byte
+                    let high_byte = value & 0x3F; // Only bits 5-0 are valid
+                    self.temp_address = (self.temp_address & 0x00FF) | ((high_byte as u16) << 8);
+                    // Update video_address's nametable bits from the high byte
+                    // Video address format: NNcccccfffccccc (15 bits)
+                    // NN bits (14-15) are nametable select
+                    let nametable_bits = (value as u16 & 0x03) << 10; // Extract bits 0-1 and shift to position
+                    self.video_address = (self.video_address & 0xBFFF) | nametable_bits;
                     self.write_toggle = true;
                 } else {
                     // Second write - low byte (bits 7-0 of address)
-                    self.address = (self.address & 0xFF00) | (value as u16);
+                    // Update temp_address's low byte
+                    self.temp_address = (self.temp_address & 0xFF00) | (value as u16);
+                    // Copy temp_address to video_address (this is the key side effect)
+                    self.video_address = self.temp_address;
                     self.write_toggle = false;
                 }
             }

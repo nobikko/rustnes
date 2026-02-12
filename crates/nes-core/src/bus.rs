@@ -102,6 +102,8 @@ impl CpuBus for Bus {
             // $8000-$FFFF - Cartridge PRG ROM
             0x8000..=0xFFFF => {
                 if let Some(ref cart) = self.cartridge {
+                    // Debug: print when reading from PRG ROM
+                    //eprintln!("DEBUG: Reading PRG ROM at address ${:04X}", address);
                     cart.read_prd_rom(address)
                 } else {
                     0xFF
@@ -271,5 +273,27 @@ mod tests {
 
         assert_eq!(cart.prg_rom_size(), 16384);
         assert_eq!(cart.chr_rom_size(), 8192);
+    }
+
+    #[test]
+    fn test_bus_read_prg_rom() {
+        let prg_rom = vec![0x78, 0xD8, 0xA9, 0x10]; // SEI, CLD, LDA #16
+        let chr_rom = vec![0x00; 8192];
+        let cart = SimpleCartridge::new(prg_rom, chr_rom);
+
+        let mut bus = Bus::new();
+        bus.set_cartridge(cart);
+
+        // Test reading from PRG ROM addresses
+        assert_eq!(bus.read(0x8000), 0x78, "Should read SEI at $8000");
+        assert_eq!(bus.read(0x8001), 0xD8, "Should read CLD at $8001");
+        assert_eq!(bus.read(0x8002), 0xA9, "Should read LDA at $8002");
+
+        // Test reading from address beyond PRG ROM (should mirror)
+        // For 4-byte PRG ROM: $8000-$8003 map to ROM[0-3]
+        // $BFFF = offset 16383 = 16383 % 4 = 3 -> ROM[3] = 0x10
+        // $FFFF = offset 32767 = 32767 % 4 = 3 -> ROM[3] = 0x10
+        assert_eq!(bus.read(0xBFFF), 0x10, "Should mirror to $BFFF");
+        assert_eq!(bus.read(0xFFFF), 0x10, "Should mirror to $FFFF");
     }
 }
