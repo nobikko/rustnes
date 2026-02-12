@@ -196,6 +196,9 @@ pub enum Opcode {
     // INY - Increment Y
     INYImplied,
 
+    // INA - Increment Accumulator (0x1A)
+    INAImplied,
+
     // JMP - Jump
     JMPAbsolute, JMPIndirect,
 
@@ -216,6 +219,9 @@ pub enum Opcode {
 
     // NOP - No Operation
     NOPImplied,
+
+    // SKB - Skip Byte (immediate) - unofficial opcode
+    SKBImmediate,
 
     // ORA - Logical OR
     ORAImmediate, ORAZeroPage, ORAZeroPageX, ORAAbsolute, ORAAbsoluteX, ORAAbsoluteY, ORAIndirectX, ORAIndirectY,
@@ -628,6 +634,9 @@ impl Cpu {
             // INY - Increment Y
             Opcode::INYImplied => { self.registers.y = self.registers.y.wrapping_add(1); self.set_flags_zn(self.registers.y); Ok(()) }
 
+            // INA - Increment Accumulator (0x1A)
+            Opcode::INAImplied => { self.registers.a = self.registers.a.wrapping_add(1); self.set_flags_zn(self.registers.a); Ok(()) }
+
             // JMP - Jump
             Opcode::JMPAbsolute => { self.registers.pc = address; Ok(()) }
             Opcode::JMPIndirect => {
@@ -682,6 +691,13 @@ impl Cpu {
 
             // NOP - No Operation
             Opcode::NOPImplied => Ok(()),
+
+            // SKB - Skip Byte (immediate)
+            Opcode::SKBImmediate => {
+                // Skip the next byte by incrementing PC
+                self.registers.pc = self.registers.pc.wrapping_add(1);
+                Ok(())
+            }
 
             // ORA - Logical OR
             Opcode::ORAImmediate => self.ora(address as u8),
@@ -774,6 +790,9 @@ impl Cpu {
 
             // SEI - Set Interrupt
             Opcode::SEIImplied => { self.status.set_interrupt(true); Ok(()) }
+
+            // INA - Increment Accumulator (0x1A)
+            Opcode::INAImplied => { self.registers.a = self.registers.a.wrapping_add(1); self.set_flags_zn(self.registers.a); Ok(()) }
 
             // STX - Store X Register
             Opcode::STXZeroPage => { bus.write(address, self.registers.x); Ok(()) }
@@ -1134,7 +1153,7 @@ impl Cpu {
             Opcode::ADCImmediate | Opcode::ANDImmediate | Opcode::CMPImmediate
             | Opcode::CPXImmediate | Opcode::CPYImmediate | Opcode::EORImmediate
             | Opcode::LDXImmediate | Opcode::LDYImmediate | Opcode::LDAImmediate
-            | Opcode::ORAImmediate | Opcode::SBCImmediate => AddressingMode::Immediate,
+            | Opcode::ORAImmediate | Opcode::SBCImmediate | Opcode::SKBImmediate => AddressingMode::Immediate,
 
             Opcode::ADCZeroPage | Opcode::ANDZeroPage | Opcode::CMPZeroPage
             | Opcode::EORZeroPage | Opcode::LDXZeroPage | Opcode::LDYZeroPage
@@ -1188,7 +1207,7 @@ impl Cpu {
 
             Opcode::BRKImplied | Opcode::CLCImplied | Opcode::CLDImplied
             | Opcode::CLIImplied | Opcode::CLVImplied | Opcode::DEXImplied
-            | Opcode::DEYImplied | Opcode::INXImplied | Opcode::INYImplied
+            | Opcode::DEYImplied | Opcode::INAImplied | Opcode::INXImplied | Opcode::INYImplied
             | Opcode::NOPImplied | Opcode::PHAImplied | Opcode::PHPImplied
             | Opcode::PLAImplied | Opcode::PLPImplied | Opcode::RTIImplied
             | Opcode::RTSImplied | Opcode::SECImplied | Opcode::SEDImplied | Opcode::SEIImplied
@@ -1206,6 +1225,9 @@ impl Cpu {
             Opcode::ADCImmediate | Opcode::ANDImmediate | Opcode::CMPImmediate
             | Opcode::EORImmediate | Opcode::LDXImmediate | Opcode::LDYImmediate
             | Opcode::LDAImmediate | Opcode::ORAImmediate | Opcode::SBCImmediate => 2,
+
+            // SKBImmediate - Skip Byte takes 3 cycles (NOP + extra byte fetch)
+            Opcode::SKBImmediate => 3,
 
             Opcode::ADCZeroPage | Opcode::ANDZeroPage | Opcode::CMPZeroPage
             | Opcode::EORZeroPage | Opcode::LDAZeroPage | Opcode::ORAZeroPage
@@ -1257,7 +1279,7 @@ impl Cpu {
             // Single-cycle instructions
             Opcode::ASLAccumulator | Opcode::CLCImplied | Opcode::CLDImplied
             | Opcode::CLIImplied | Opcode::CLVImplied | Opcode::DEXImplied
-            | Opcode::DEYImplied | Opcode::INXImplied | Opcode::INYImplied
+            | Opcode::DEYImplied | Opcode::INAImplied | Opcode::INXImplied | Opcode::INYImplied
             | Opcode::NOPImplied | Opcode::SECImplied | Opcode::SEDImplied | Opcode::SEIImplied
             | Opcode::TXSImplied | Opcode::TYAImplied => 2,
 
@@ -1320,6 +1342,7 @@ impl Cpu {
             0x06 => Ok(Opcode::ASLZeroPage),
             0x16 => Ok(Opcode::ASLZeroPageX),
             0x0E => Ok(Opcode::ASLAbsolute),
+            0x1C => Ok(Opcode::INCAbsoluteX),
             0x1E => Ok(Opcode::ASLAbsoluteX),
             0x90 => Ok(Opcode::BCCRelative),
             0xB0 => Ok(Opcode::BCSRelative),
@@ -1333,6 +1356,7 @@ impl Cpu {
             0x50 => Ok(Opcode::BVCRelative),
             0x70 => Ok(Opcode::BVSRelative),
             0x18 => Ok(Opcode::CLCImplied),
+            0x1A => Ok(Opcode::INAImplied),
             0xD8 => Ok(Opcode::CLDImplied),
             0x58 => Ok(Opcode::CLIImplied),
             0xB8 => Ok(Opcode::CLVImplied),
@@ -1397,6 +1421,8 @@ impl Cpu {
             0x4E => Ok(Opcode::LSRAbsolute),
             0x5E => Ok(Opcode::LSRAbsoluteX),
             0xEA => Ok(Opcode::NOPImplied),
+            0x80 => Ok(Opcode::SKBImmediate),
+            0x82 => Ok(Opcode::SKBImmediate),
             0x09 => Ok(Opcode::ORAImmediate),
             0x07 => Ok(Opcode::ORAZeroPageX),
             0x05 => Ok(Opcode::ORAZeroPage),
