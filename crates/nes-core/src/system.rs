@@ -18,6 +18,8 @@ pub struct NesSystem {
     bus: Bus,
     /// Frame counter
     frame_count: u64,
+    /// Track if PPU has been initialized
+    ppu_initialized: bool,
 }
 
 impl NesSystem {
@@ -29,7 +31,22 @@ impl NesSystem {
             apu: Apu::new(),
             bus: Bus::new(),
             frame_count: 0,
+            ppu_initialized: false,
         }
+    }
+
+    /// Initialize PPU with CHR ROM and set up PPU reference in bus
+    pub fn initialize_ppu(&mut self) {
+        if self.ppu_initialized {
+            return;
+        }
+
+        // Get CHR ROM from cartridge and set it on PPU
+        if let Some(chr_rom) = self.bus.chr_rom() {
+            self.ppu.set_chr_rom(chr_rom.to_vec());
+        }
+
+        self.ppu_initialized = true;
     }
 
     /// Load a simple cartridge into the system
@@ -58,6 +75,9 @@ impl NesSystem {
     /// Step the system by one instruction (CPU)
     /// This also steps PPU appropriately (3 PPU cycles per CPU cycle)
     pub fn step(&mut self) -> Result<bool, CpuError> {
+        // Sync PPU registers from bus to PPU before CPU reads
+        self.sync_ppu_registers();
+
         // Get opcode and decode it before stepping
         let opcode_byte = self.bus.read(self.cpu.registers().pc);
         let opcode = match self.cpu.decode_opcode(opcode_byte) {
@@ -81,6 +101,17 @@ impl NesSystem {
         self.apu.step(instruction_cycles as u8);
 
         Ok(true)
+    }
+
+    /// Sync PPU internal state from bus registers
+    pub fn sync_ppu_registers(&mut self) {
+        // Read values from bus's ppu_registers and sync to PPU
+        // The bus stores writes to PPU registers ($2000-$2007)
+        self.ppu.write(0x2000, self.bus.get_ppu_register(0)); // PPUCTRL
+        self.ppu.write(0x2001, self.bus.get_ppu_register(1)); // PPUMASK
+        self.ppu.write(0x2003, self.bus.get_ppu_register(3)); // OAMADDR
+        self.ppu.write(0x2005, self.bus.get_ppu_register(5)); // PPUSCROLL
+        self.ppu.write(0x2006, self.bus.get_ppu_register(6)); // PPUADDR
     }
 
     /// Run for N frames
