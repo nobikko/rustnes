@@ -400,6 +400,31 @@ impl Ppu {
         &self.status
     }
 
+    /// Get PPU mask
+    pub fn mask(&self) -> &PpuMask {
+        &self.mask
+    }
+
+    /// Get PPU control
+    pub fn control(&self) -> &PpuCtrl {
+        &self.control
+    }
+
+    /// Get raw PPU mask value (for debugging)
+    pub fn mask_value(&self) -> u8 {
+        self.mask.0
+    }
+
+    /// Get raw PPU status value (for debugging)
+    pub fn status_value(&self) -> u8 {
+        self.status.0
+    }
+
+    /// Get raw PPU control value (for debugging)
+    pub fn control_value(&self) -> u8 {
+        self.control.0
+    }
+
     /// Check if VBLANK is active
     pub fn in_vblank(&self) -> bool {
         self.status.vblank()

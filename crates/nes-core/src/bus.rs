@@ -26,7 +26,7 @@ pub const APU_REGISTER_COUNT: usize = 24;
 pub struct Bus {
     /// 2KB internal RAM (with mirroring)
     ram: [u8; RAM_SIZE],
-    /// PPU registers
+    /// PPU registers (copy for read-back)
     ppu_registers: [u8; PPU_REGISTER_COUNT],
     /// APU/IO registers
     apu_registers: [u8; APU_REGISTER_COUNT],
@@ -149,6 +149,17 @@ impl CpuBus for Bus {
                 // PRG ROM is write-protected
             }
             _ => {}
+        }
+    }
+}
+
+impl Bus {
+    /// Get PPU register value
+    pub fn get_ppu_register(&self, index: usize) -> u8 {
+        if index < PPU_REGISTER_COUNT {
+            self.ppu_registers[index]
+        } else {
+            0
         }
     }
 }
