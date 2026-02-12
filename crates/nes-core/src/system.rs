@@ -195,6 +195,11 @@ impl NesSystem {
     pub fn write_memory(&mut self, address: u16, value: u8) {
         self.bus.write(address, value);
     }
+
+    /// Get a reference to the bus's cartridge
+    pub fn bus_cartridge(&self) -> Option<&SimpleCartridge> {
+        self.bus.cartridge()
+    }
 }
 
 impl Default for NesSystem {
