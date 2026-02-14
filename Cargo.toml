@@ -1,0 +1,13 @@
+[package]
+name = "rust-nes-emulator"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+egui = "0.28"
+eframe = "0.28"
+rfd = "0.14"
+
+[profile.release]
+opt-level = 3
+lto = true
